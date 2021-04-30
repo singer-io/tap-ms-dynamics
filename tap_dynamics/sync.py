@@ -1,7 +1,7 @@
 import singer
 from singer import Transformer, metadata
 
-from tap_dynamics.client import Client
+from tap_dynamics.client import DynamicsClient
 from tap_dynamics.streams import STREAMS
 
 LOGGER = singer.get_logger()

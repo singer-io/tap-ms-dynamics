@@ -4,7 +4,15 @@ from singer import utils
 from tap_dynamics.discover import discover
 from tap_dynamics.sync import sync
 
-REQUIRED_CONFIG_KEYS = ["start_date", "username", "password"]
+REQUIRED_CONFIG_KEYS = [
+    "start_date",
+    "organization_uri",
+    "user_agent",
+    "client_id",
+    "client_secret",
+    "tenant_id",
+    "redirect_uri"
+]
 LOGGER = singer.get_logger()
 
 

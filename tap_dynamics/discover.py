@@ -28,9 +28,11 @@ def get_schemas():
 
     for stream_name, stream_object in STREAMS.items():
 
-        schema_path = get_abs_path('schemas/{}.json'.format(stream_name))
-        with open(schema_path) as file:
-            schema = json.load(file)
+        # schema_path = get_abs_path('schemas/{}.json'.format(stream_name))
+        # with open(schema_path) as file:
+        #     schema = json.load(file)
+
+        schema = stream_object.schema
 
         meta = metadata.get_standard_metadata(
             schema=schema,

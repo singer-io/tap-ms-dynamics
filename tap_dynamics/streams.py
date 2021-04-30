@@ -6,7 +6,7 @@ import requests
 import singer
 from singer import Transformer, metrics
 
-from tap_dynamics.client import Client
+from tap_dynamics.client import DynamicsClient
 
 
 LOGGER = singer.get_logger()
@@ -25,7 +25,7 @@ class BaseStream:
     params = {}
     parent = None
 
-    def __init__(self, client: Client):
+    def __init__(self, client: DynamicsClient):
         self.client = client
 
     def get_records(self, config: dict = None, is_parent: bool = False) -> list:
@@ -150,6 +150,4 @@ class SampleStream(FullTableStream):
         yield from sample_data
 
 
-STREAMS = {
-    'sample_stream': SampleStream,
-}
+STREAMS = {}
