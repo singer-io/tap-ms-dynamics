@@ -4,7 +4,7 @@ import os
 from singer import metadata
 from singer.catalog import Catalog
 
-from tap_dynamics.streams import STREAMS
+from tap_dynamics.streams import get_streams
 
 
 def get_abs_path(path):
@@ -21,12 +21,12 @@ def _get_replication_key_from_meta(schema_meta):
         return schema_meta[0].get('metadata').get('valid-replication-keys')[0]
     return None
 
-def get_schemas():
+def get_schemas(config):
 
     schemas = {}
     schemas_metadata = {}
 
-    for stream_name, stream_object in STREAMS.items():
+    for stream_name, stream_object in get_streams(**config):
 
         # schema_path = get_abs_path('schemas/{}.json'.format(stream_name))
         # with open(schema_path) as file:
@@ -55,9 +55,9 @@ def get_schemas():
     return schemas, schemas_metadata
 
 
-def discover():
+def discover(config):
 
-    schemas, schemas_metadata = get_schemas()
+    schemas, schemas_metadata = get_schemas(config)
     streams = []
 
     for schema_name, schema in schemas.items():

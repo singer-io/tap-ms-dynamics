@@ -1,6 +1,4 @@
 from logging import config
-import msal
-from msal import SerializableTokenCache
 import os
 import time
 import json
@@ -13,6 +11,8 @@ import singer.utils as singer_utils
 from singer import metadata, metrics
 
 LOGGER = singer.get_logger()
+
+API_VERSION = '9.2'
 
 def get_abs_path(path):
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
@@ -80,7 +80,7 @@ class DynamicsClient:
                 select_fields_by_default=None,
                 start_date=None):
         self.organization_uri = organization_uri
-        self.api_version = api_version if api_version else '9.2'
+        self.api_version = api_version if api_version else API_VERSION
         self.client_id = client_id
         self.client_secret = client_secret
         self.tenant_id = tenant_id
@@ -94,7 +94,7 @@ class DynamicsClient:
 
         self.select_fields_by_default = select_fields_by_default is True or (isinstance(select_fields_by_default, str) and select_fields_by_default.lower() == 'true')
         self.start_date = start_date
-        self.config_path = config_path
+        self.config_path = config_path # TODO: check how this is implimented in tap-quickbooks w/ OUT needing self-reference in the config file
 
         # validate start_date
         singer_utils.strptime(start_date)
@@ -111,6 +111,10 @@ class DynamicsClient:
 
         with open(self.config_path, 'w') as file:
             json.dump(config, file, indent=2)
+
+    def login(self):
+        # TODO: create login method for OAth2.0 authorization_code flow using 'offline_access' and 'org_uri/.default' scopes
+        pass
 
     def ensure_access_token(self):
         if self.access_token is None or self.expires_at <= datetime.utcnow():
@@ -145,16 +149,14 @@ class DynamicsClient:
             "OData-Version": "4.0"
             }
 
-    @backoff.on_exception(backoff.constant,
-                          (Dynamics5xxException,
-                           Dynamics429Exception,
-                           Dynamics4xxException,
-                           requests.ConnectionError),
-                          max_tries=3,
-                          interval=10)
+    @backoff.on_exception(backoff.expo,
+                          (Dynamics5xxException, Dynamics429Exception, requests.ConnectionError),
+                          max_tries=10,
+                          factor=2,
+                          on_backoff=log_backoff_attempt)
     @singer.utils.ratelimit(500, 60)
     def _make_request(self, method, endpoint, headers=None, params=None, data=None):
-        full_url = self.organization_uri + 'api/data/v' + self.api_version + '/' + endpoint
+        full_url = self.organization_uri + '/api/data/v' + self.api_version + '/' + endpoint
         LOGGER.info(
             "%s - Making request to %s endpoint %s, with params %s",
             full_url,
@@ -184,7 +186,37 @@ class DynamicsClient:
 
         return response.json()
 
-
-
     def get(self, url, headers=None, params=None):
         return self._make_request("GET", url, headers=headers, params=params)
+
+    def get_entity_definitions(self):
+        # TODO: this would call the `EntityDefinitions` endpoint and get all entities and their respective fields (Attributes) and corresponding metadata
+
+        params = {
+            "$select": "MetadataId,LogicalName,EntitySetName",
+            "$expand": "Attributes($select=MetadataId,IsValidForRead,IsRetrievable,AttributeType,AttributeTypeName,LogicalName)",    
+            "$count": "true",
+        }
+
+        return self.get('EntityDefinitions', params=params)
+
+    def build_entity_metadata(self):
+        # TODO: this should take the output of get_entity_definitions() and parse the results
+
+        results = self.get_entity_definitions()
+
+        LOGGER.info(f'MS Dynamics 365 returned {results.get("@odata.count")} entities')
+
+        # parse results
+        for result in results.get('value'):
+
+            result['name'] = result.get('LogicalName')
+            attributes = [attr.get('LogicalName') for attr in result.get('Attributes')]
+
+            if 'modifiedon' in attributes or 'createdon' in attributes:
+                result['replication_method'] = 'INCREMENTAL'
+            else: result['replication_method'] = 'FULL_TABLE'
+
+            # TODO: add logic or a helper method to determine data-types mapping
+
+            yield result

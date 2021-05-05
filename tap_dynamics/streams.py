@@ -54,7 +54,8 @@ class BaseStream:
         :param config: The tap config file
         :return: A list of records
         """
-        parent = self.parent(self.client)
+        # pylint: disable=not-callable
+        parent = self.parent(self.client) 
         return parent.get_records(config, is_parent=True)
 
 
@@ -149,5 +150,23 @@ class SampleStream(FullTableStream):
 
         yield from sample_data
 
+REPLICATION_TO_STREAM_MAP = {
+    'INCREMENTAL': IncrementalStream,
+    'FULL_TABLE': FullTableStream
+}
 
 STREAMS = {}
+
+def get_streams(**kwargs):
+    global STREAMS
+
+    # dynamically build streams by calling a DynamicsClient method
+    client = DynamicsClient(**kwargs)
+
+    for stream in client.build_entity_metadata():
+        stream_name = stream.get('name')
+        replication_method = stream.get('replication_method')
+        # TODO: should probably instantiate an object for each stream Class with requisite metadata
+        STREAMS.update({stream_name: REPLICATION_TO_STREAM_MAP.get(replication_method)})
+
+    return STREAMS
