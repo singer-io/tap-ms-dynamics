@@ -1,15 +1,50 @@
-import csv
-import time
 from typing import Any, Iterator
 
-import requests
 import singer
-from singer import Transformer, metrics
+from singer import Transformer, metrics, metadata
+from singer.catalog import Schema
 
 from tap_dynamics.client import DynamicsClient
+from tap_dynamics.transform import flatten_entity_attributes
 
 
 LOGGER = singer.get_logger()
+
+STRING_TYPES = set([
+    'Customer', # TODO: not present in demo data
+    'LookupType',
+    'MemoType',
+    'Owner', # TODO: not present in demo data
+    'PartyList',
+    'PicklistType',
+    'StateType',
+    'StatusType',
+    'StringType',
+    'UniqueidentifierType',
+    'CalendarRules', # TODO: need to confirm; not present in demo data
+    'ManagedPropertyType',
+    'EntityNameType',
+    ])
+
+INTEGER_TYPES = set([
+    'IntegerType',
+    'BigIntType',
+])
+
+NUMBER_TYPES = set([
+    'DecimalType',
+    'DoubleType',
+    'MoneyType',
+    ])
+
+DATE_TYPES = set(['DateTimeType'])
+
+BOOL_TYPES = set(['BooleanType'])
+
+COMPLEX_TYPES = set([
+    'ImageType', # From Virtual `AttributeType`
+    'MultiSelectPicklistType', # From Virtual `AttributeType`
+    ])
 
 class BaseStream:
     """
@@ -157,16 +192,78 @@ REPLICATION_TO_STREAM_MAP = {
 
 STREAMS = {}
 
-def get_streams(**kwargs):
+def get_streams(config):
     global STREAMS
 
-    # dynamically build streams by calling a DynamicsClient method
-    client = DynamicsClient(**kwargs)
+    client = DynamicsClient(**config)
 
+    # dynamically build streams by iterating over entities and calling build_schema()
     for stream in client.build_entity_metadata():
-        stream_name = stream.get('name')
-        replication_method = stream.get('replication_method')
-        # TODO: should probably instantiate an object for each stream Class with requisite metadata
-        STREAMS.update({stream_name: REPLICATION_TO_STREAM_MAP.get(replication_method)})
+        stream_name = stream.get('LogicalName')
+
+        attributes = flatten_entity_attributes(stream.get('Attributes'))
+
+        if 'modifiedon' in attributes.keys() or 'createdon' in attributes.keys():
+            replication_method = 'INCREMENTAL'
+            if 'modifiedon' in attributes.keys():
+                replication_key = 'modifiedon'
+            elif 'createdon' in attributes.keys():
+                replication_key = 'createdon'
+        else: replication_method = 'FULL_TABLE'
+       
+        # Instantiate an object for each stream Class with requisite metadata
+        stream_class = REPLICATION_TO_STREAM_MAP.get(replication_method)
+        stream_obj = stream_class(client)
+
+        # set class attributes for each stream
+        stream_obj.tap_stream_id = stream_name
+        stream_obj.key_properties = [stream_name + 'id']        
+                
+        if replication_method == 'INCREMENTAL':
+            stream_obj.replication_key = replication_key
+            stream_obj.valid_replication_keys = ['modifiedon', 'createdon']
+
+        # 
+        stream_obj.schema = build_schema(stream, attributes)
+
+        STREAMS.update({stream_name: stream_obj})
 
     return STREAMS
+
+def build_schema(stream: dict, attributes: dict):
+    json_props = {}
+
+    for attr in attributes.items():
+        if not attr[1].get('is_readable'):
+            continue
+
+        dyn_type = attr[1].get('type')
+        attr_name = attr[0]
+        json_type = 'string'
+        json_format = None
+
+        if dyn_type in DATE_TYPES:
+            json_format = 'date-time'
+        elif dyn_type in INTEGER_TYPES:
+            json_type = 'integer'
+        elif dyn_type in NUMBER_TYPES:
+            json_type = 'number'
+        elif dyn_type in BOOL_TYPES:
+            json_type = 'boolean'
+
+        prop_json_schema = {
+            'type': ['null', json_type]
+        }
+
+        if json_format:
+            prop_json_schema['format'] = json_format
+
+        json_props[attr_name] = prop_json_schema
+
+    schema = {
+        'type': 'object',
+        'additionalProperties': False,
+        'properties': json_props
+    }
+
+    return schema

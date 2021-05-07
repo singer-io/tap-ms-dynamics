@@ -17,6 +17,9 @@ API_VERSION = '9.2'
 def get_abs_path(path):
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
 
+def log_backoff_attempt(details):
+    LOGGER.info("ConnectionError detected, triggering backoff: %d try", details.get("tries"))
+
 class DynamicsException(Exception):
     pass
 
@@ -31,40 +34,6 @@ class Dynamics4xxException(DynamicsException):
 
 class Dynamics429Exception(DynamicsException):
     pass
-
-STRING_TYPES = set([
-    'Customer',
-    'Lookup',
-    'Memo',
-    'Owner',
-    'PartyList',
-    'Picklist',
-    'State',
-    'Status',
-    'String',
-    'Uniqueidentifier',
-    'CalendarRules', # TODO: need to confirm
-    'Virtual', # TODO: need to confirm
-    'ManagedProperty',
-    'EntityName'
-])
-
-NUMBER_TYPES = set([
-    'Decimal',
-    'Double',
-    'Integer',
-    'Money',
-    'BigInt'
-])
-
-DATE_TYPES = set(['DateTime'])
-
-BOOL_TYPES = set(['Boolean'])
-
-def log_backoff_attempt(details):
-    LOGGER.info("ConnectionError detected, triggering backoff: %d try", details.get("tries"))
-
-
 
 class DynamicsClient:
     def __init__(self,
@@ -116,7 +85,7 @@ class DynamicsClient:
         # TODO: create login method for OAth2.0 authorization_code flow using 'offline_access' and 'org_uri/.default' scopes
         pass
 
-    def ensure_access_token(self):
+    def _ensure_access_token(self):
         if self.access_token is None or self.expires_at <= datetime.utcnow():
             response = self.session.post(
                 'https://login.microsoftonline.com/common/oauth2/token',
@@ -165,7 +134,7 @@ class DynamicsClient:
             params,
         )
 
-        self.ensure_access_token()
+        self._ensure_access_token()
 
         default_headers = self._get_standard_headers()
 
@@ -186,37 +155,23 @@ class DynamicsClient:
 
         return response.json()
 
-    def get(self, url, headers=None, params=None):
-        return self._make_request("GET", url, headers=headers, params=params)
+    def get(self, endpoint, headers=None, params=None):
+        return self._make_request("GET", endpoint, headers=headers, params=params)
 
-    def get_entity_definitions(self):
-        # TODO: this would call the `EntityDefinitions` endpoint and get all entities and their respective fields (Attributes) and corresponding metadata
+    def build_entity_metadata(self):
+        '''
+        Calls the `EntityDefinitions` endpoint to get all entities, their attributes, and corresponding metadata
+        '''
 
         params = {
             "$select": "MetadataId,LogicalName,EntitySetName",
-            "$expand": "Attributes($select=MetadataId,IsValidForRead,IsRetrievable,AttributeType,AttributeTypeName,LogicalName)",    
+            "$expand": "Attributes($select=MetadataId,IsValidForRead,IsRetrievable,AttributeType,AttributeTypeName,LogicalName)",
             "$count": "true",
         }
-
-        return self.get('EntityDefinitions', params=params)
-
-    def build_entity_metadata(self):
-        # TODO: this should take the output of get_entity_definitions() and parse the results
-
-        results = self.get_entity_definitions()
+        
+        results = self.get('EntityDefinitions', params=params)
 
         LOGGER.info(f'MS Dynamics 365 returned {results.get("@odata.count")} entities')
 
-        # parse results
-        for result in results.get('value'):
-
-            result['name'] = result.get('LogicalName')
-            attributes = [attr.get('LogicalName') for attr in result.get('Attributes')]
-
-            if 'modifiedon' in attributes or 'createdon' in attributes:
-                result['replication_method'] = 'INCREMENTAL'
-            else: result['replication_method'] = 'FULL_TABLE'
-
-            # TODO: add logic or a helper method to determine data-types mapping
-
-            yield result
+        # return results
+        yield from results.get('value')

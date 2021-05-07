@@ -26,7 +26,9 @@ def get_schemas(config):
     schemas = {}
     schemas_metadata = {}
 
-    for stream_name, stream_object in get_streams(**config):
+    streams = get_streams(config)
+
+    for stream_name, stream_object in streams.items():
 
         # schema_path = get_abs_path('schemas/{}.json'.format(stream_name))
         # with open(schema_path) as file:
