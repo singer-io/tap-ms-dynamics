@@ -2,7 +2,7 @@ import singer
 from singer import Transformer, metadata
 
 from tap_dynamics.client import DynamicsClient
-from tap_dynamics.streams import STREAMS
+from tap_dynamics.streams import get_streams
 
 LOGGER = singer.get_logger()
 
@@ -11,10 +11,12 @@ def sync(config, state, catalog):
 
     client = DynamicsClient(**config)
 
+    streams = get_streams(config)
+
     with Transformer() as transformer:
         for stream in catalog.get_selected_streams(state):
             tap_stream_id = stream.tap_stream_id
-            stream_obj = STREAMS[tap_stream_id](client)
+            stream_obj = streams[tap_stream_id](client)
             stream_schema = stream.schema.to_dict()
             stream_metadata = metadata.to_map(stream.metadata)
 
