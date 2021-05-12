@@ -224,21 +224,20 @@ def get_streams(config):
             stream_obj.valid_replication_keys = ['modifiedon', 'createdon']
 
         # 
-        stream_obj.schema = build_schema(stream, attributes)
+        stream_obj.schema = build_schema(attributes)
 
         STREAMS.update({stream_name: stream_obj})
 
     return STREAMS
 
-def build_schema(stream: dict, attributes: dict):
+def build_schema(attributes: dict):
     json_props = {}
 
-    for attr in attributes.items():
-        if not attr[1].get('is_readable'):
+    for attr_name, attr_props in attributes.items():
+        if not attr_props.get('is_readable'):
             continue
 
-        dyn_type = attr[1].get('type')
-        attr_name = attr[0]
+        dyn_type = attr_props.get('type')
         json_type = 'string'
         json_format = None
 
@@ -250,6 +249,8 @@ def build_schema(stream: dict, attributes: dict):
             json_type = 'number'
         elif dyn_type in BOOL_TYPES:
             json_type = 'boolean'
+        elif dyn_type in COMPLEX_TYPES:
+            continue
 
         prop_json_schema = {
             'type': ['null', json_type]
