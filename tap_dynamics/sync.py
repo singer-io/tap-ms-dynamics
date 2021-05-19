@@ -9,14 +9,12 @@ LOGGER = singer.get_logger()
 def sync(config, state, catalog):
     """ Sync data from tap source """
 
-    client = DynamicsClient(**config)
-
     streams = get_streams(config)
 
     with Transformer() as transformer:
         for stream in catalog.get_selected_streams(state):
             tap_stream_id = stream.tap_stream_id
-            stream_obj = streams[tap_stream_id](client)
+            stream_obj = streams[tap_stream_id]
             stream_schema = stream.schema.to_dict()
             stream_metadata = metadata.to_map(stream.metadata)
 

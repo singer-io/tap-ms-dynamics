@@ -1,10 +1,13 @@
 import json
 import os
 
+import singer
 from singer import metadata
 from singer.catalog import Catalog
 
 from tap_dynamics.streams import get_streams
+
+LOGGER = singer.get_logger()
 
 
 def get_abs_path(path):
@@ -27,6 +30,8 @@ def get_schemas(config):
     schemas_metadata = {}
 
     streams = get_streams(config)
+
+    LOGGER.info(f'There are {len(streams):d} valid streams in MS Dynamics 365')
 
     for stream_name, stream_object in streams.items():
 

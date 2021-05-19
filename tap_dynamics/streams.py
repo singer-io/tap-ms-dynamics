@@ -1,10 +1,11 @@
+import datetime
 from typing import Any, Iterator
 
 import singer
 from singer import Transformer, metrics, metadata
 from singer.catalog import Schema
 
-from tap_dynamics.client import DynamicsClient
+from tap_dynamics.client import DynamicsClient, DynamicsException
 from tap_dynamics.transform import flatten_entity_attributes
 
 
@@ -53,6 +54,7 @@ class BaseStream:
     :param client: The API client used extract records from the external source
     """
     tap_stream_id = None
+    stream_endpoint = None
     replication_method = None
     replication_key = None
     key_properties = []
@@ -63,7 +65,7 @@ class BaseStream:
     def __init__(self, client: DynamicsClient):
         self.client = client
 
-    def get_records(self, config: dict = None, is_parent: bool = False) -> list:
+    def get_records(self, config: dict = None, bookmark_datetime: datetime = None) -> list:
         """
         Returns a list of records for that stream.
 
@@ -107,6 +109,11 @@ class IncrementalStream(BaseStream):
     def __init__(self, client):
         super().__init__(client)
 
+    def get_records(self, bookmark_datetime: datetime = None):
+        response = self.client.get(self.stream_endpoint, params=self.params)
+        yield from response.get('value')
+
+
     def sync(self, state: dict, stream_schema: dict, stream_metadata: dict, config: dict, transformer: Transformer) -> dict:
         """
         The sync logic for an incremental stream.
@@ -140,12 +147,20 @@ class FullTableStream(BaseStream):
     A child class of a base stream used to represent streams that use the
     FULL_TABLE replication method.
 
-    :param client: The API client used extract records from the external source
+    :param client: The API client used to extract records from the external source
     """
     replication_method = 'FULL_TABLE'
 
     def __init__(self, client):
         super().__init__(client)
+
+    def get_records(self):
+        response = self.client.get(self.stream_endpoint, params=self.params)
+        if not response.get('value'):
+            LOGGER.critical(f'response is empty for {self.stream_endpoint}')
+            raise DynamicsException
+        yield from response.get('value')
+
 
     def sync(self, state: dict, stream_schema: dict, stream_metadata: dict, config: dict, transformer: Transformer) -> dict:
         """
@@ -159,7 +174,7 @@ class FullTableStream(BaseStream):
         :return: State data in the form of a dictionary
         """
         with metrics.record_counter(self.tap_stream_id) as counter:
-            for record in self.get_records(config):
+            for record in self.get_records():
                 transformed_record = transformer.transform(record, stream_schema, stream_metadata)
                 singer.write_record(self.tap_stream_id, transformed_record)
                 counter.increment()
@@ -167,23 +182,6 @@ class FullTableStream(BaseStream):
         singer.write_state(state)
         return state
 
-
-class SampleStream(FullTableStream):
-    """
-    Gets records for a sample stream.
-    """
-    tap_stream_id = 'sample_stream'
-    key_properties = ['id']
-
-    def get_records(self, config=None, is_parent=False):
-        sample_data = [{
-            'string_field': 'some string',
-            'datetime_field': '2021-04-23T17:05:41.762537+00:00',
-            'integer_field': 3,
-            'double_field': 22.78,
-        }]
-
-        yield from sample_data
 
 REPLICATION_TO_STREAM_MAP = {
     'INCREMENTAL': IncrementalStream,
@@ -200,6 +198,7 @@ def get_streams(config):
     # dynamically build streams by iterating over entities and calling build_schema()
     for stream in client.build_entity_metadata():
         stream_name = stream.get('LogicalName')
+        stream_endpoint = stream.get('EntitySetName')
 
         attributes = flatten_entity_attributes(stream.get('Attributes'))
 
@@ -217,14 +216,20 @@ def get_streams(config):
 
         # set class attributes for each stream
         stream_obj.tap_stream_id = stream_name
-        stream_obj.key_properties = [stream_name + 'id']        
+        stream_obj.key_properties = [stream_name + 'id']
+        stream_obj.stream_endpoint = stream_endpoint
                 
         if replication_method == 'INCREMENTAL':
             stream_obj.replication_key = replication_key
             stream_obj.valid_replication_keys = ['modifiedon', 'createdon']
 
-        # 
+        # build schema and skip over any streams with no valid fields
         stream_obj.schema = build_schema(attributes)
+        if not len(stream_obj.schema.get('properties')):
+            continue
+
+        if stream_obj.key_properties[0] not in stream_obj.schema.get('properties'):
+            continue
 
         STREAMS.update({stream_name: stream_obj})
 
