@@ -109,7 +109,9 @@ class IncrementalStream(BaseStream):
     def __init__(self, client):
         super().__init__(client)
 
-    def get_records(self, bookmark_datetime: datetime = None):
+    def get_records(self, stream_metadata: dict, bookmark_datetime: datetime = None):
+        # TODO: build $select param for included fields and ordering responces and $filter for bookmark_datetime
+        # and header `Prefer` for maxpagesize
         response = self.client.get(self.stream_endpoint, params=self.params)
         yield from response.get('value')
 
@@ -125,11 +127,14 @@ class IncrementalStream(BaseStream):
         :param transformer: A singer Transformer object
         :return: State data in the form of a dictionary
         """
-        start_time = singer.get_bookmark(state, self.tap_stream_id, self.replication_key, config['start_date'])
+        start_time = singer.get_bookmark(state,
+                                        self.tap_stream_id,
+                                        self.replication_key,
+                                        config['start_date'])
         max_record_value = start_time
 
         with metrics.record_counter(self.tap_stream_id) as counter:
-            for record in self.get_records(config):
+            for record in self.get_records(stream_metadata):
                 transformed_record = transformer.transform(record, stream_schema, stream_metadata)
                 record_replication_value = singer.utils.strptime_to_utc(transformed_record[self.replication_key])
                 if record_replication_value >= singer.utils.strptime_to_utc(max_record_value):
@@ -154,7 +159,8 @@ class FullTableStream(BaseStream):
     def __init__(self, client):
         super().__init__(client)
 
-    def get_records(self):
+    def get_records(self, stream_metadata: dict):
+        # TODO: also build params for request
         response = self.client.get(self.stream_endpoint, params=self.params)
         if not response.get('value'):
             LOGGER.critical(f'response is empty for {self.stream_endpoint}')
@@ -174,7 +180,7 @@ class FullTableStream(BaseStream):
         :return: State data in the form of a dictionary
         """
         with metrics.record_counter(self.tap_stream_id) as counter:
-            for record in self.get_records():
+            for record in self.get_records(stream_metadata):
                 transformed_record = transformer.transform(record, stream_schema, stream_metadata)
                 singer.write_record(self.tap_stream_id, transformed_record)
                 counter.increment()

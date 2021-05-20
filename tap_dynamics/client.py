@@ -38,7 +38,7 @@ class Dynamics429Exception(DynamicsException):
 class DynamicsClient:
     def __init__(self,
                 organization_uri,
-                config_path,
+                config_path, # TODO: check of another way to do get this
                 tenant_id=None,
                 api_version=None,
                 client_id=None,
@@ -46,7 +46,6 @@ class DynamicsClient:
                 user_agent=None,
                 redirect_uri=None,
                 refresh_token=None,
-                select_fields_by_default=None,
                 start_date=None):
         self.organization_uri = organization_uri
         self.api_version = api_version if api_version else API_VERSION
@@ -61,12 +60,8 @@ class DynamicsClient:
         self.access_token = None
         self.expires_at = None     
 
-        self.select_fields_by_default = select_fields_by_default is True or (isinstance(select_fields_by_default, str) and select_fields_by_default.lower() == 'true')
         self.start_date = start_date
         self.config_path = config_path # TODO: check how this is implimented in tap-quickbooks w/ OUT needing self-reference in the config file
-
-        # validate start_date
-        singer_utils.strptime(start_date)
 
     def _write_config(self, refresh_token):
         LOGGER.info("Credentials Refreshed")
@@ -123,9 +118,8 @@ class DynamicsClient:
                           max_tries=10,
                           factor=2,
                           on_backoff=log_backoff_attempt)
-    @singer.utils.ratelimit(500, 60)
     def _make_request(self, method, endpoint, headers=None, params=None, data=None):
-        full_url = self.organization_uri + '/api/data/v' + self.api_version + '/' + endpoint
+        full_url = f'{self.organization_uri}/api/data/v{self.api_version}/{endpoint}'
         LOGGER.info(
             "%s - Making request to %s endpoint %s, with params %s",
             full_url,
@@ -165,13 +159,13 @@ class DynamicsClient:
 
         params = {
             "$select": "MetadataId,LogicalName,EntitySetName",
-            "$expand": "Attributes($select=MetadataId,IsValidForRead,IsRetrievable,AttributeType,AttributeTypeName,LogicalName)",
+            "$expand": "Attributes($select=MetadataId,IsValidForRead,AttributeTypeName,LogicalName)",
             "$count": "true",
         }
         
         results = self.get('EntityDefinitions', params=params)
 
-        LOGGER.info(f'MS Dynamics 365 returned {results.get("@odata.count")} entities')
+        LOGGER.info(f'MS Dynamics returned {results.get("@odata.count")} entities')
 
         # return results
         yield from results.get('value')
