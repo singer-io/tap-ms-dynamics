@@ -1,4 +1,3 @@
-import json
 import os
 
 import singer
@@ -31,7 +30,7 @@ def get_schemas(config):
 
     streams = get_streams(config)
 
-    LOGGER.info(f'There are {len(streams):d} valid streams in MS Dynamics')
+    LOGGER.info('There are {:d} valid streams in MS Dynamics'.format(len(streams)))
 
     for stream_name, stream_object in streams.items():
         schema = stream_object.schema

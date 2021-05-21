@@ -1,5 +1,3 @@
-import json
-
 def flatten_entity_attributes(attributes):
     flat_attributes = {}
     # dict of attributes/fields for an entity in {'LogicalNameOfAttribute': 'DynamicsDataType', ...}

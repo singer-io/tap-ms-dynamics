@@ -1,7 +1,6 @@
 import singer
 from singer import Transformer, metadata
 
-from tap_dynamics.client import DynamicsClient
 from tap_dynamics.streams import get_streams
 
 LOGGER = singer.get_logger()
@@ -10,6 +9,7 @@ def sync(config, state, catalog):
     """ Sync data from tap source """
 
     streams = get_streams(config)
+    # TODO: document that newly created fields won't be selected as currently implemented
 
     with Transformer() as transformer:
         for stream in catalog.get_selected_streams(state):

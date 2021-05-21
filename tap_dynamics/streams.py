@@ -1,9 +1,8 @@
 import datetime
-from typing import Any, Iterator
+from typing import Iterator
 
 import singer
-from singer import Transformer, metrics, metadata
-from singer.catalog import Schema
+from singer import Transformer, metrics
 
 from tap_dynamics.client import DynamicsClient, DynamicsException
 from tap_dynamics.transform import flatten_entity_attributes
@@ -84,17 +83,6 @@ class BaseStream:
         """
         self.params = params
 
-    def get_parent_data(self, config: dict = None) -> list:
-        """
-        Returns a list of records from the parent stream.
-
-        :param config: The tap config file
-        :return: A list of records
-        """
-        # pylint: disable=not-callable
-        parent = self.parent(self.client) 
-        return parent.get_records(config, is_parent=True)
-
 
 class IncrementalStream(BaseStream):
     """
@@ -105,9 +93,6 @@ class IncrementalStream(BaseStream):
     """
     replication_method = 'INCREMENTAL'
     batched = False
-
-    def __init__(self, client):
-        super().__init__(client)
 
     def get_records(self, stream_metadata: dict, bookmark_datetime: datetime = None):
         # TODO: build $select param for included fields and ordering responces and $filter for bookmark_datetime
@@ -156,14 +141,11 @@ class FullTableStream(BaseStream):
     """
     replication_method = 'FULL_TABLE'
 
-    def __init__(self, client):
-        super().__init__(client)
-
     def get_records(self, stream_metadata: dict):
         # TODO: also build params for request
         response = self.client.get(self.stream_endpoint, params=self.params)
         if not response.get('value'):
-            LOGGER.critical(f'response is empty for {self.stream_endpoint}')
+            LOGGER.critical('response is empty for {}'.format(self.stream_endpoint))
             raise DynamicsException
         yield from response.get('value')
 
@@ -194,10 +176,8 @@ REPLICATION_TO_STREAM_MAP = {
     'FULL_TABLE': FullTableStream
 }
 
-STREAMS = {}
-
 def get_streams(config):
-    global STREAMS
+    STREAMS = {} # pylint: disable=invalid-name
 
     client = DynamicsClient(**config)
 
@@ -208,14 +188,11 @@ def get_streams(config):
 
         attributes = flatten_entity_attributes(stream.get('Attributes'))
 
-        if 'modifiedon' in attributes.keys() or 'createdon' in attributes.keys():
+        if 'modifiedon' in attributes.keys():
             replication_method = 'INCREMENTAL'
-            if 'modifiedon' in attributes.keys():
-                replication_key = 'modifiedon'
-            elif 'createdon' in attributes.keys():
-                replication_key = 'createdon'
+            replication_key = 'modifiedon'
         else: replication_method = 'FULL_TABLE'
-       
+
         # Instantiate an object for each stream Class with requisite metadata
         stream_class = REPLICATION_TO_STREAM_MAP.get(replication_method)
         stream_obj = stream_class(client)
@@ -224,14 +201,14 @@ def get_streams(config):
         stream_obj.tap_stream_id = stream_name
         stream_obj.key_properties = [stream_name + 'id']
         stream_obj.stream_endpoint = stream_endpoint
-                
+
         if replication_method == 'INCREMENTAL':
             stream_obj.replication_key = replication_key
-            stream_obj.valid_replication_keys = ['modifiedon', 'createdon']
+            stream_obj.valid_replication_keys = ['modifiedon']
 
         # build schema and skip over any streams with no valid fields
         stream_obj.schema = build_schema(attributes)
-        if not len(stream_obj.schema.get('properties')):
+        if not stream_obj.schema.get('properties'):
             continue
 
         if stream_obj.key_properties[0] not in stream_obj.schema.get('properties'):
@@ -261,6 +238,7 @@ def build_schema(attributes: dict):
         elif dyn_type in BOOL_TYPES:
             json_type = 'boolean'
         elif dyn_type in COMPLEX_TYPES:
+            # TODO: mark as `inclusion unsupported`
             continue
 
         prop_json_schema = {

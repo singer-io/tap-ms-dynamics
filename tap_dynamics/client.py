@@ -1,14 +1,12 @@
-from logging import config
 import os
-import time
 import json
+from datetime import datetime, timedelta
+
 import backoff
 import requests
-from datetime import datetime, timedelta
-from requests.exceptions import RequestException
 import singer
 import singer.utils as singer_utils
-from singer import metadata, metrics
+
 
 LOGGER = singer.get_logger()
 
@@ -35,10 +33,11 @@ class Dynamics4xxException(DynamicsException):
 class Dynamics429Exception(DynamicsException):
     pass
 
+# pylint: disable=too-many-instance-attributes
 class DynamicsClient:
     def __init__(self,
                 organization_uri,
-                config_path, # TODO: check of another way to do get this
+                config_path, # TODO: check of another way to do get this (Should be on the parsed arguments)
                 tenant_id=None,
                 api_version=None,
                 client_id=None,
@@ -58,7 +57,7 @@ class DynamicsClient:
 
         self.session = requests.Session()
         self.access_token = None
-        self.expires_at = None     
+        self.expires_at = None
 
         self.start_date = start_date
         self.config_path = config_path # TODO: check how this is implimented in tap-quickbooks w/ OUT needing self-reference in the config file
@@ -75,10 +74,6 @@ class DynamicsClient:
 
         with open(self.config_path, 'w') as file:
             json.dump(config, file, indent=2)
-
-    def login(self):
-        # TODO: create login method for OAth2.0 authorization_code flow using 'offline_access' and 'org_uri/.default' scopes
-        pass
 
     def _ensure_access_token(self):
         if self.access_token is None or self.expires_at <= datetime.utcnow():
@@ -139,10 +134,10 @@ class DynamicsClient:
 
         response = self.session.request(method, full_url, headers=headers, params=params, data=data)
 
-        # TODO: Check error status, rate limit, etc.
-        if response.status_code >= 500:
+        if response.status_code >= 500: # pylint: disable=no-else-raise
             raise Dynamics5xxException(response.text)
         elif response.status_code == 429:
+            # TODO: add specific 429 retry logic
             raise Dynamics429Exception(response.text)
         elif response.status_code >= 400:
             raise Dynamics4xxException(response.text)
@@ -162,10 +157,10 @@ class DynamicsClient:
             "$expand": "Attributes($select=MetadataId,IsValidForRead,AttributeTypeName,LogicalName)",
             "$count": "true",
         }
-        
+
         results = self.get('EntityDefinitions', params=params)
 
-        LOGGER.info(f'MS Dynamics returned {results.get("@odata.count")} entities')
+        LOGGER.info('MS Dynamics returned {} entities'.format(results.get("@odata.count")))
 
         # return results
         yield from results.get('value')
