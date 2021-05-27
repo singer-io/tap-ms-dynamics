@@ -23,15 +23,15 @@ def main():
 
     # If discover flag was passed, run discovery mode and dump output to stdout
     if args.discover:
-        catalog = discover(args.config)
+        catalog = discover(args.config, args.config_path)
         catalog.dump()
     # Otherwise run in sync mode
     else:
         if args.catalog:
             catalog = args.catalog
         else:
-            catalog = discover(args.config)
-        sync(args.config, args.state, catalog)
+            catalog = discover(args.config, args.config_path)
+        sync(args.config, args.config_path, args.state, catalog)
 
 
 if __name__ == "__main__":

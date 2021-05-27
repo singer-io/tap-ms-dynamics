@@ -5,11 +5,13 @@ from tap_dynamics.streams import get_streams
 
 LOGGER = singer.get_logger()
 
-def sync(config, state, catalog):
+def sync(config, config_path, state, catalog):
     """ Sync data from tap source """
 
-    streams = get_streams(config)
+    streams = get_streams(config, config_path)
     # TODO: document that newly created fields won't be selected as currently implemented
+
+    LOGGER.info('There are {:d} valid streams in MS Dynamics'.format(len(streams)))
 
     with Transformer() as transformer:
         for stream in catalog.get_selected_streams(state):

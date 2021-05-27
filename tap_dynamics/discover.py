@@ -23,12 +23,12 @@ def _get_replication_key_from_meta(schema_meta):
         return schema_meta[0].get('metadata').get('valid-replication-keys')[0]
     return None
 
-def get_schemas(config):
+def get_schemas(config, config_path):
 
     schemas = {}
     schemas_metadata = {}
 
-    streams = get_streams(config)
+    streams = get_streams(config, config_path)
 
     LOGGER.info('There are {:d} valid streams in MS Dynamics'.format(len(streams)))
 
@@ -56,9 +56,9 @@ def get_schemas(config):
     return schemas, schemas_metadata
 
 
-def discover(config):
+def discover(config, config_path):
 
-    schemas, schemas_metadata = get_schemas(config)
+    schemas, schemas_metadata = get_schemas(config, config_path)
     streams = []
 
     for schema_name, schema in schemas.items():
