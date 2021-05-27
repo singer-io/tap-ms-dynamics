@@ -1,6 +1,6 @@
 def flatten_entity_attributes(attributes):
     flat_attributes = {}
-    # dict of attributes/fields for an entity in {'LogicalNameOfAttribute': 'DynamicsDataType', ...}
+
     for attr in attributes:
         logical_name = attr.get('LogicalName')
         dynamics_type = attr.get('AttributeTypeName', {}).get('Value')

@@ -5,12 +5,12 @@ from datetime import datetime, timedelta
 import backoff
 import requests
 import singer
-import singer.utils as singer_utils
 
 
 LOGGER = singer.get_logger()
 
 API_VERSION = '9.2'
+MAX_PAGESIZE = 5000
 
 def get_abs_path(path):
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
@@ -37,7 +37,8 @@ class Dynamics429Exception(DynamicsException):
 class DynamicsClient:
     def __init__(self,
                 organization_uri,
-                config_path, # TODO: check of another way to do get this (Should be on the parsed arguments)
+                config_path,
+                max_pagesize,
                 tenant_id=None,
                 api_version=None,
                 client_id=None,
@@ -48,6 +49,7 @@ class DynamicsClient:
                 start_date=None):
         self.organization_uri = organization_uri
         self.api_version = api_version if api_version else API_VERSION
+        self.max_pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
         self.client_id = client_id
         self.client_secret = client_secret
         self.tenant_id = tenant_id
@@ -60,7 +62,7 @@ class DynamicsClient:
         self.expires_at = None
 
         self.start_date = start_date
-        self.config_path = config_path # TODO: check how this is implimented in tap-quickbooks w/ OUT needing self-reference in the config file
+        self.config_path = config_path
 
     def _write_config(self, refresh_token):
         LOGGER.info("Credentials Refreshed")
@@ -97,15 +99,17 @@ class DynamicsClient:
             if self.refresh_token != data.get('refresh_token'):
                 self._write_config(data.get('refresh_token'))
 
+            # pad by 10 seconds for clock drift
             self.expires_at = datetime.utcnow() + \
-                timedelta(seconds=int(data.get('expires_in')) - 10) # pad by 10 seconds for clock drift
+                timedelta(seconds=int(data.get('expires_in')) - 10)
 
     def _get_standard_headers(self):
         return {
             "Authorization": "Bearer {}".format(self.access_token),
             "User-Agent": self.user_agent,
             "OData-MaxVersion": "4.0",
-            "OData-Version": "4.0"
+            "OData-Version": "4.0",
+            "If-None-Match": "null"
             }
 
     @backoff.on_exception(backoff.expo,
@@ -113,13 +117,16 @@ class DynamicsClient:
                           max_tries=10,
                           factor=2,
                           on_backoff=log_backoff_attempt)
-    def _make_request(self, method, endpoint, headers=None, params=None, data=None):
-        full_url = f'{self.organization_uri}/api/data/v{self.api_version}/{endpoint}'
+    def _make_request(self, method, endpoint, paging=False, headers=None, params=None, data=None):
+        if not paging:
+            full_url = f'{self.organization_uri}/api/data/v{self.api_version}/{endpoint}'
+        else: full_url = endpoint
+
         LOGGER.info(
             "%s - Making request to %s endpoint %s, with params %s",
             full_url,
             method.upper(),
-            endpoint,
+            endpoint if not paging else '@odata.nextLink',
             params,
         )
 
@@ -144,14 +151,16 @@ class DynamicsClient:
 
         return response.json()
 
-    def get(self, endpoint, headers=None, params=None):
-        return self._make_request("GET", endpoint, headers=headers, params=params)
+    def get(self, endpoint, paging=False, headers=None, params=None):
+        return self._make_request("GET", endpoint, paging, headers=headers, params=params)
 
     def build_entity_metadata(self):
         '''
-        Calls the `EntityDefinitions` endpoint to get all entities, their attributes, and corresponding metadata
+        Calls the `EntityDefinitions` endpoint to get all entities,
+            their attributes, and corresponding metadata
         '''
 
+        # pylint: disable=line-too-long
         params = {
             "$select": "MetadataId,LogicalName,EntitySetName",
             "$expand": "Attributes($select=MetadataId,IsValidForRead,AttributeTypeName,LogicalName)",
@@ -164,3 +173,9 @@ class DynamicsClient:
 
         # return results
         yield from results.get('value')
+
+    @staticmethod
+    def build_params(orderby_key: str = 'modifiedon', replication_key: str = 'modifiedon', filter_value: str = None) -> dict:
+        filter_param = f'{replication_key} ge {filter_value}'
+        orderby_param = f'{orderby_key} asc'
+        return {"$orderby": orderby_param, "$filter": filter_param}

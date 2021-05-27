@@ -1,27 +1,24 @@
-import datetime
-from typing import Iterator
-
 import singer
 from singer import Transformer, metrics
 
 from tap_dynamics.client import DynamicsClient, DynamicsException
 from tap_dynamics.transform import flatten_entity_attributes
 
-
+MAX_PAGESIZE = 5000
 LOGGER = singer.get_logger()
 
 STRING_TYPES = set([
-    'Customer', # TODO: not present in demo data
+    'Customer',
     'LookupType',
     'MemoType',
-    'Owner', # TODO: not present in demo data
+    'Owner',
     'PartyList',
     'PicklistType',
     'StateType',
     'StatusType',
     'StringType',
     'UniqueidentifierType',
-    'CalendarRules', # TODO: need to confirm; not present in demo data
+    'CalendarRules',
     'ManagedPropertyType',
     'EntityNameType',
     ])
@@ -59,18 +56,17 @@ class BaseStream:
     key_properties = []
     valid_replication_keys = []
     params = {}
-    parent = None
 
     def __init__(self, client: DynamicsClient):
         self.client = client
 
-    def get_records(self, config: dict = None, bookmark_datetime: datetime = None) -> list:
+    def get_records(self, max_pagesize: int = 100, bookmark_datetime: str = None) -> list:
         """
         Returns a list of records for that stream.
 
-        :param config: The tap config file
-        :param is_parent: If true, may change the type of data
-            that is returned for a child stream to consume
+        :param max_pagesize: The odata.maxpagesize to use in the request header
+        :param bookmark_datetime: The datetime value to use in the $filter
+            query param for the request
         :return: list of records
         """
         raise NotImplementedError("Child classes of BaseStream require implementation")
@@ -94,11 +90,29 @@ class IncrementalStream(BaseStream):
     replication_method = 'INCREMENTAL'
     batched = False
 
-    def get_records(self, stream_metadata: dict, bookmark_datetime: datetime = None):
-        # TODO: build $select param for included fields and ordering responces and $filter for bookmark_datetime
-        # and header `Prefer` for maxpagesize
-        response = self.client.get(self.stream_endpoint, params=self.params)
-        yield from response.get('value')
+    def get_records(self, max_pagesize: int = 100, bookmark_datetime: str = None):
+        endpoint = self.stream_endpoint
+
+        pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
+        header = {'Prefer': f'odata.maxpagesize={pagesize}'}
+
+        params = self.client.build_params(filter_value=bookmark_datetime)
+        self.set_parameters(params)
+
+        next_page = True
+        paging = False
+
+        while next_page:
+            response = self.client.get(endpoint, paging, headers=header, params=self.params)
+
+            if '@odata.nextLink' in response:
+                paging = True
+                endpoint = response.get('@odata.nextLink')
+                self.set_parameters({})
+            else:
+                next_page = False
+
+            yield from response.get('value')
 
 
     def sync(self, state: dict, stream_schema: dict, stream_metadata: dict, config: dict, transformer: Transformer) -> dict:
@@ -119,7 +133,7 @@ class IncrementalStream(BaseStream):
         max_record_value = start_time
 
         with metrics.record_counter(self.tap_stream_id) as counter:
-            for record in self.get_records(stream_metadata):
+            for record in self.get_records(config.get('max_pagesize'), max_record_value):
                 transformed_record = transformer.transform(record, stream_schema, stream_metadata)
                 record_replication_value = singer.utils.strptime_to_utc(transformed_record[self.replication_key])
                 if record_replication_value >= singer.utils.strptime_to_utc(max_record_value):
@@ -141,13 +155,31 @@ class FullTableStream(BaseStream):
     """
     replication_method = 'FULL_TABLE'
 
-    def get_records(self, stream_metadata: dict):
-        # TODO: also build params for request
-        response = self.client.get(self.stream_endpoint, params=self.params)
-        if not response.get('value'):
-            LOGGER.critical('response is empty for {}'.format(self.stream_endpoint))
-            raise DynamicsException
-        yield from response.get('value')
+    # pylint: disable=arguments-differ
+    def get_records(self, max_pagesize: int = 100):
+        endpoint = self.stream_endpoint
+
+        pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
+        header = {'Prefer': f'odata.maxpagesize={pagesize}'}
+
+        next_page = True
+        paging = False
+
+        while next_page:
+            response = self.client.get(endpoint, paging, headers=header, params=self.params)
+
+            if not response.get('value'):
+                LOGGER.critical('response is empty for {}'.format(self.stream_endpoint))
+                raise DynamicsException
+
+            if '@odata.nextLink' in response:
+                paging = True
+                endpoint = response.get('@odata.nextLink')
+                self.set_parameters({})
+            else:
+                next_page = False
+
+            yield from response.get('value')
 
 
     def sync(self, state: dict, stream_schema: dict, stream_metadata: dict, config: dict, transformer: Transformer) -> dict:
@@ -162,7 +194,7 @@ class FullTableStream(BaseStream):
         :return: State data in the form of a dictionary
         """
         with metrics.record_counter(self.tap_stream_id) as counter:
-            for record in self.get_records(stream_metadata):
+            for record in self.get_records(config.get('max_pagesize')):
                 transformed_record = transformer.transform(record, stream_schema, stream_metadata)
                 singer.write_record(self.tap_stream_id, transformed_record)
                 counter.increment()
@@ -176,9 +208,10 @@ REPLICATION_TO_STREAM_MAP = {
     'FULL_TABLE': FullTableStream
 }
 
-def get_streams(config):
+def get_streams(config: dict, config_path: str) -> dict:
     STREAMS = {} # pylint: disable=invalid-name
 
+    config["config_path"] = config_path
     client = DynamicsClient(**config)
 
     # dynamically build streams by iterating over entities and calling build_schema()
@@ -238,7 +271,7 @@ def build_schema(attributes: dict):
         elif dyn_type in BOOL_TYPES:
             json_type = 'boolean'
         elif dyn_type in COMPLEX_TYPES:
-            # TODO: mark as `inclusion unsupported`
+            # TODO: mark as "inclusion": "unsupported"
             continue
 
         prop_json_schema = {
