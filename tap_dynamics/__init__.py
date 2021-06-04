@@ -10,7 +10,6 @@ REQUIRED_CONFIG_KEYS = [
     "user_agent",
     "client_id",
     "client_secret",
-    "tenant_id",
     "redirect_uri"
 ]
 LOGGER = singer.get_logger()

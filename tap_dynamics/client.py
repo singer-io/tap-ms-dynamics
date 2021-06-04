@@ -39,7 +39,6 @@ class DynamicsClient:
                 organization_uri,
                 config_path,
                 max_pagesize,
-                tenant_id=None,
                 api_version=None,
                 client_id=None,
                 client_secret=None,
@@ -52,7 +51,6 @@ class DynamicsClient:
         self.max_pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
         self.client_id = client_id
         self.client_secret = client_secret
-        self.tenant_id = tenant_id
         self.redirect_uri = redirect_uri
         self.user_agent = user_agent
         self.refresh_token = refresh_token
