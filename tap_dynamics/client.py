@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 import backoff
 import requests
 import singer
+from simplejson import JSONDecodeError
+
+from tap_dynamics.transform import transform_metadata_xml
 
 
 LOGGER = singer.get_logger()
@@ -147,21 +150,24 @@ class DynamicsClient:
         elif response.status_code >= 400:
             raise Dynamics4xxException(response.text)
 
-        return response.json()
+        try:
+            results = response.json()
+        except JSONDecodeError:
+            results = response.text
+
+        return results
 
     def get(self, endpoint, paging=False, headers=None, params=None):
         return self._make_request("GET", endpoint, paging, headers=headers, params=params)
 
-    def build_entity_metadata(self):
+    def call_entity_definitions(self):
         '''
-        Calls the `EntityDefinitions` endpoint to get all entities,
-            their attributes, and corresponding metadata
+        Calls the `EntityDefinitions` endpoint to get all entities.
         '''
 
         # pylint: disable=line-too-long
         params = {
             "$select": "MetadataId,LogicalName,EntitySetName",
-            "$expand": "Attributes($select=MetadataId,IsValidForRead,AttributeTypeName,LogicalName)",
             "$count": "true",
         }
 
@@ -171,6 +177,32 @@ class DynamicsClient:
 
         # return results
         yield from results.get('value')
+
+    def call_metadata(self) -> dict:
+        '''
+        Calls the `$metadata` endpoint to get entities, key field,
+            properties, and corresponding datatypes.
+        '''
+        metadata = self.get('$metadata')
+
+        return transform_metadata_xml(metadata)
+
+    def build_entity_metadata(self):
+        '''
+        Builds entity metadata from the `EntityDefinitions` and `$metadata` endpoints.
+        '''
+        entity_definitions = self.call_entity_definitions()
+
+        entity_metadata = self.call_metadata()
+
+        for entity in entity_definitions:
+            entity_name = entity.get("LogicalName")
+            if entity_name in entity_metadata:
+                # checks that entity is in $metadata response
+                entity_metadata[entity_name]["LogicalName"] = entity_name
+                entity_metadata[entity_name]["EntitySetName"] = entity.get("EntitySetName")
+
+        yield from entity_metadata.values()
 
     @staticmethod
     def build_params(orderby_key: str = 'modifiedon', replication_key: str = 'modifiedon', filter_value: str = None) -> dict:
