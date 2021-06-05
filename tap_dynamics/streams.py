@@ -1,46 +1,63 @@
 import singer
 from singer import Transformer, metrics
 
-from tap_dynamics.client import DynamicsClient, DynamicsException
+from tap_dynamics.client import DynamicsClient
 from tap_dynamics.transform import flatten_entity_attributes
 
-MAX_PAGESIZE = 5000
 LOGGER = singer.get_logger()
 
+MAX_PAGESIZE = 5000
+
+EXCLUDED_ENTITIES = set([
+    'MetadataBase',
+    'calendarrule',
+    'complexcontrol',
+    'dataperformance',
+    'knowledgearticlescategories',
+    'languageprovisioningstate',
+    'managedproperty',
+    'msdyn_nonrelationalds',
+    'officegraphdocument',
+    'optionset',
+    'organizationdatasyncsubscription',
+    'postregarding',
+    'ribbonmetadatatoprocess',
+    'runtimedependency',
+    'similarityrule',
+    'subscriptionmanuallytrackedobject',
+    'subscriptionstatisticsoutlook',
+    'subscriptionsyncentryoffline',
+    'subscriptionsyncentryoutlook',
+    'systemusersyncmappingprofiles',
+    'teamsyncattributemappingprofiles',
+    'timestampdatemapping',
+])
+
 STRING_TYPES = set([
-    'Customer',
-    'LookupType',
-    'MemoType',
-    'Owner',
-    'PartyList',
-    'PicklistType',
-    'StateType',
-    'StatusType',
-    'StringType',
-    'UniqueidentifierType',
-    'CalendarRules',
-    'ManagedPropertyType',
-    'EntityNameType',
+    'Edm.String',
+    'Edm.Guid',
     ])
 
 INTEGER_TYPES = set([
-    'IntegerType',
-    'BigIntType',
+    'Edm.Int32',
+    'Edm.Int64',
 ])
 
 NUMBER_TYPES = set([
-    'DecimalType',
-    'DoubleType',
-    'MoneyType',
+    'Edm.Decimal',
+    'Edm.Double',
     ])
 
-DATE_TYPES = set(['DateTimeType'])
+DATE_TYPES = set([
+    'Edm.DateTimeOffset',
+    'Edm.Date',
+    ])
 
-BOOL_TYPES = set(['BooleanType'])
+BOOL_TYPES = set(['Edm.Boolean'])
 
 COMPLEX_TYPES = set([
-    'ImageType', # From Virtual `AttributeType`
-    'MultiSelectPicklistType', # From Virtual `AttributeType`
+    'Edm.Binary',
+    'mscrm.BooleanManagedProperty',
     ])
 
 class BaseStream:
@@ -169,8 +186,7 @@ class FullTableStream(BaseStream):
             response = self.client.get(endpoint, paging, headers=header, params=self.params)
 
             if not response.get('value'):
-                LOGGER.critical('response is empty for {}'.format(self.stream_endpoint))
-                raise DynamicsException
+                LOGGER.warning('response is empty for {}'.format(self.stream_endpoint))
 
             if '@odata.nextLink' in response:
                 paging = True
@@ -218,8 +234,13 @@ def get_streams(config: dict, config_path: str) -> dict:
     for stream in client.build_entity_metadata():
         stream_name = stream.get('LogicalName')
         stream_endpoint = stream.get('EntitySetName')
+        stream_key = stream.get('Key')
 
-        attributes = flatten_entity_attributes(stream.get('Attributes'))
+        # skip over any streams that don't have a name or are in EXCLUDED_ENTITIES
+        if not stream_name or stream_name in EXCLUDED_ENTITIES:
+            continue
+
+        attributes = flatten_entity_attributes(stream.get('Properties'))
 
         if 'modifiedon' in attributes.keys():
             replication_method = 'INCREMENTAL'
@@ -232,7 +253,7 @@ def get_streams(config: dict, config_path: str) -> dict:
 
         # set class attributes for each stream
         stream_obj.tap_stream_id = stream_name
-        stream_obj.key_properties = [stream_name + 'id']
+        stream_obj.key_properties = [stream_key]
         stream_obj.stream_endpoint = stream_endpoint
 
         if replication_method == 'INCREMENTAL':
@@ -255,9 +276,6 @@ def build_schema(attributes: dict):
     json_props = {}
 
     for attr_name, attr_props in attributes.items():
-        if not attr_props.get('is_readable'):
-            continue
-
         dyn_type = attr_props.get('type')
         json_type = 'string'
         json_format = None
