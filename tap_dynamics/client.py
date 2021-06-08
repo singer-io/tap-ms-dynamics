@@ -1,4 +1,6 @@
 import os
+import sys
+import math
 import json
 from datetime import datetime, timedelta
 
@@ -14,6 +16,7 @@ LOGGER = singer.get_logger()
 
 API_VERSION = '9.2'
 MAX_PAGESIZE = 5000
+MAX_RETRIES = 5
 
 def get_abs_path(path):
     return os.path.join(os.path.dirname(os.path.realpath(__file__)), path)
@@ -21,20 +24,39 @@ def get_abs_path(path):
 def log_backoff_attempt(details):
     LOGGER.info("ConnectionError detected, triggering backoff: %d try", details.get("tries"))
 
+def retry_after_wait_gen():
+    while True:
+        # This is called in an except block so we can retrieve the exception
+        # and check it.
+        exc_info = sys.exc_info()
+        resp = exc_info[1].response
+        sleep_time_str = resp.headers.get('Retry-After')
+        LOGGER.info(f'API rate limit exceeded -- sleeping for '
+                    f'{sleep_time_str} seconds')
+        yield math.floor(float(sleep_time_str))
+
+# pylint: disable=missing-class-docstring
 class DynamicsException(Exception):
     pass
 
+# pylint: disable=missing-class-docstring
 class DynamicsQuotaExceededException(DynamicsException):
     pass
 
+# pylint: disable=missing-class-docstring
 class Dynamics5xxException(DynamicsException):
     pass
 
+# pylint: disable=missing-class-docstring
 class Dynamics4xxException(DynamicsException):
     pass
 
+# pylint: disable=missing-class-docstring
 class Dynamics429Exception(DynamicsException):
-    pass
+    def __init__(self, message=None, response=None):
+        super().__init__(message)
+        self.message = message
+        self.response = response
 
 # pylint: disable=too-many-instance-attributes
 class DynamicsClient:
@@ -113,9 +135,13 @@ class DynamicsClient:
             "If-None-Match": "null"
             }
 
+    @backoff.on_exception(retry_after_wait_gen,
+                          Dynamics429Exception,
+                          max_tries=MAX_RETRIES,
+                          on_backoff=log_backoff_attempt)
     @backoff.on_exception(backoff.expo,
-                          (Dynamics5xxException, Dynamics429Exception, requests.ConnectionError),
-                          max_tries=10,
+                          (Dynamics5xxException, Dynamics4xxException, requests.ConnectionError),
+                          max_tries=MAX_RETRIES,
                           factor=2,
                           on_backoff=log_backoff_attempt)
     def _make_request(self, method, endpoint, paging=False, headers=None, params=None, data=None):
@@ -142,11 +168,11 @@ class DynamicsClient:
 
         response = self.session.request(method, full_url, headers=headers, params=params, data=data)
 
-        if response.status_code >= 500: # pylint: disable=no-else-raise
+        # pylint: disable=no-else-raise
+        if response.status_code >= 500:
             raise Dynamics5xxException(response.text)
         elif response.status_code == 429:
-            # TODO: add specific 429 retry logic
-            raise Dynamics429Exception(response.text)
+            raise Dynamics429Exception("rate limit exceeded", response)
         elif response.status_code >= 400:
             raise Dynamics4xxException(response.text)
 
@@ -165,7 +191,6 @@ class DynamicsClient:
         Calls the `EntityDefinitions` endpoint to get all entities.
         '''
 
-        # pylint: disable=line-too-long
         params = {
             "$select": "MetadataId,LogicalName,EntitySetName",
             "$count": "true",
