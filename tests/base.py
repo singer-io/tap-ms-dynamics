@@ -176,7 +176,7 @@ class DynamicsBaseTest(unittest.TestCase):
 
         found_catalog_names = set(map(lambda c: c['stream_name'], found_catalogs))
 
-        self.assertIn(self.expected_streams(), found_catalog_names, msg="discovered schemas do not match")
+        self.assertTrue(self.expected_streams().issubset(found_catalog_names), msg="discovered schemas do not match")
         print("discovered schemas are OK")
 
         return found_catalogs
