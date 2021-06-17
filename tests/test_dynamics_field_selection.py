@@ -63,8 +63,7 @@ class DynamicsFieldSelection(DynamicsBaseTest):  # TODO use base.py, determine i
 
         found_catalog_names = set(map(lambda c: c['tap_stream_id'], found_catalogs))
 
-        diff = self.expected_check_streams().symmetric_difference( found_catalog_names )
-        self.assertEqual(len(diff), 0, msg="discovered schemas do not match: {}".format(diff))
+        self.assertTrue(self.expected_check_streams().issubset(found_catalog_names), msg="discovered schemas do not match: {}".format(found_catalog_names))
         print("discovered schemas are kosher")
 
         all_excluded_fields = {}
