@@ -73,6 +73,7 @@ class DynamicsClient:
                 start_date=None):
         self.organization_uri = organization_uri
         self.api_version = api_version if api_version else API_VERSION
+        max_pagesize = MAX_PAGESIZE if max_pagesize is None else max_pagesize # tap-tester was failing otherwise
         self.max_pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
         self.client_id = client_id
         self.client_secret = client_secret

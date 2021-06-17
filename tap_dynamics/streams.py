@@ -110,6 +110,7 @@ class IncrementalStream(BaseStream):
     def get_records(self, max_pagesize: int = 100, bookmark_datetime: str = None):
         endpoint = self.stream_endpoint
 
+        max_pagesize = MAX_PAGESIZE if max_pagesize is None else max_pagesize # tap-tester was failing otherwise
         pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
         header = {'Prefer': f'odata.maxpagesize={pagesize}'}
 
@@ -176,6 +177,7 @@ class FullTableStream(BaseStream):
     def get_records(self, max_pagesize: int = 100):
         endpoint = self.stream_endpoint
 
+        max_pagesize = MAX_PAGESIZE if max_pagesize is None else max_pagesize # tap-tester was failing otherwise
         pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
         header = {'Prefer': f'odata.maxpagesize={pagesize}'}
 
