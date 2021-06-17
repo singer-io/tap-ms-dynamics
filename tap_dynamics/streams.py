@@ -2,7 +2,7 @@ import singer
 from singer import Transformer, metrics
 
 from tap_dynamics.client import DynamicsClient
-from tap_dynamics.transform import flatten_entity_attributes
+from tap_dynamics.transform import (flatten_entity_attributes, get_client_args)
 
 LOGGER = singer.get_logger()
 
@@ -228,7 +228,9 @@ def get_streams(config: dict, config_path: str) -> dict:
     STREAMS = {} # pylint: disable=invalid-name
 
     config["config_path"] = config_path
-    client = DynamicsClient(**config)
+    client_config = get_client_args(config)
+
+    client = DynamicsClient(**client_config)
 
     # dynamically build streams by iterating over entities and calling build_schema()
     for stream in client.build_entity_metadata():
