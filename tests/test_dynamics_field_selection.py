@@ -1,4 +1,3 @@
-import os
 from functools import reduce
 
 from tap_tester import connections, menagerie, runner
