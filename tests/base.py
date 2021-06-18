@@ -31,7 +31,7 @@ class DynamicsBaseTest(unittest.TestCase):
     BOOKMARK_COMPARISON_FORMAT = "%Y-%m-%dT00:00:00+00:00"
     LOGGER = get_logger()
 
-    start_date = ""
+    start_date = "2021-04-02T00:00:00Z"
 
     @staticmethod
     def tap_name():
