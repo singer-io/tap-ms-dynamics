@@ -31,6 +31,9 @@ EXCLUDED_ENTITIES = set([
     'systemusersyncmappingprofiles',
     'teamsyncattributemappingprofiles',
     'timestampdatemapping',
+    'lookupmapping',
+    'msdyn_casesuggestion',
+    'msdyn_knowledgearticlesuggestion'
 ])
 
 STRING_TYPES = set([
