@@ -46,7 +46,7 @@ class DynamicsBaseTest(unittest.TestCase):
     def get_properties(self, original: bool = True):
         """Configuration properties required for the tap."""
         return_value = {
-            "start_date": "2021-04-01T00:00:00Z",
+            "start_date": "2021-06-15T00:00:00Z",
             "user_agent": "tap-dynamics <api_user_email@your_company.com>",
         }
         if original:
@@ -77,10 +77,10 @@ class DynamicsBaseTest(unittest.TestCase):
                 self.REPLICATION_METHOD: self.INCREMENTAL,
                 self.REPLICATION_KEYS: {"modifiedon"}
             },
-            "dependency": {
-                self.PRIMARY_KEYS: {"dependencyid"},
-                self.REPLICATION_METHOD: self.FULL_TABLE
-            },
+            # "dependency": {
+            #     self.PRIMARY_KEYS: {"dependencyid"},
+            #     self.REPLICATION_METHOD: self.FULL_TABLE
+            # },
             "entity": {
                 self.PRIMARY_KEYS: {"entityid"},
                 self.REPLICATION_METHOD: self.FULL_TABLE
