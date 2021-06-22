@@ -12,18 +12,6 @@ class DynamicsStartDateTest(DynamicsBaseTest):
     def name():
         return "tap_tester_dynamics_start_date_test"
 
-    def get_properties(self, original: bool = True):
-        """Configuration properties required for the tap."""
-        return_value = {
-            "start_date": "2021-01-01T00:00:00Z",
-            "user_agent": "tap-dynamics <api_user_email@your_company.com>",
-        }
-        if original:
-            return return_value
-
-        return_value["start_date"] = self.start_date
-        return return_value
-
     def test_run(self):
         """Instantiate start date according to the desired data set and run the test"""
 
