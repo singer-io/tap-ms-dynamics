@@ -36,10 +36,10 @@ class DynamicsBookmarks(DynamicsBaseTest):
         If the test data is changed in the future this will break expectations for this test.
 
         The following streams barely make the cut:
-        account         "2021-02-09T18:17:30.000000Z"
-                        "2021-02-09T16:24:58.000000Z"
-        contact         "2021-02-09T18:17:41.000000Z"
-                        "2021-02-09T17:10:09.000000Z"
+        account         "2021-06-14T00:00:00.000000Z"
+                        "2021-06-15T00:00:00.000000Z"
+        contact         "2021-06-14T00:00:00.000000Z"
+                        "2021-06-15T00:00:00.000000Z"
         """
         timedelta_by_stream = {stream: [1,0,0]  # {stream_name: [days, hours, minutes], ...}
                                for stream in self.expected_streams()}
@@ -70,7 +70,7 @@ class DynamicsBookmarks(DynamicsBaseTest):
         ### First Sync
         ##########################################################################
 
-        conn_id = connections.ensure_connection(self, original_properties=False)
+        conn_id = connections.ensure_connection(self, original_properties=True)
 
         # Run in check mode
         found_catalogs = self.run_and_verify_check_mode(conn_id)
@@ -126,17 +126,12 @@ class DynamicsBookmarks(DynamicsBaseTest):
 
 
                 if expected_replication_method == self.INCREMENTAL:
-
-
                     # collect information specific to incremental streams from syncs 1 & 2
                     replication_key = next(iter(expected_replication_keys[stream]))
                     first_bookmark_value = first_bookmark_key_value.get(replication_key)
                     second_bookmark_value = second_bookmark_key_value.get(replication_key)
                     first_bookmark_value_utc = self.convert_state_to_utc(first_bookmark_value)
                     second_bookmark_value_utc = self.convert_state_to_utc(second_bookmark_value)
-                    simulated_bookmark_value = new_states['bookmarks'][stream][replication_key]
-                    simulated_bookmark_minus_lookback = simulated_bookmark_value
-
 
                     # Verify the first sync sets a bookmark of the expected form
                     self.assertIsNotNone(first_bookmark_key_value)
@@ -149,22 +144,15 @@ class DynamicsBookmarks(DynamicsBaseTest):
                     # Verify the second sync bookmark is Equal to the first sync bookmark
                     self.assertEqual(second_bookmark_value, first_bookmark_value) # assumes no changes to data during test
 
-
                     for record in second_sync_messages:
-
-                        # Verify the second sync records respect the previous (simulated) bookmark value
-                        replication_key_value = record.get(replication_key)
-                        self.assertGreaterEqual(replication_key_value, simulated_bookmark_minus_lookback,
-                                                msg="Second sync records do not respect the previous bookmark.")
-
                         # Verify the second sync bookmark value is the max replication key value for a given stream
+                        replication_key_value = record.get(replication_key)
                         self.assertLessEqual(
                             replication_key_value, second_bookmark_value_utc,
                             msg="Second sync bookmark was set incorrectly, a record with a greater replication-key value was synced."
                         )
 
                     for record in first_sync_messages:
-
                         # Verify the first sync bookmark value is the max replication key value for a given stream
                         replication_key_value = record.get(replication_key)
                         self.assertLessEqual(
@@ -172,14 +160,10 @@ class DynamicsBookmarks(DynamicsBaseTest):
                             msg="First sync bookmark was set incorrectly, a record with a greater replication-key value was synced."
                         )
 
-
                     # Verify the number of records in the 2nd sync is less then the first
                     self.assertLess(second_sync_count, first_sync_count)
 
-
                 elif expected_replication_method == self.FULL_TABLE:
-
-
                     # Verify the syncs do not set a bookmark for full table streams
                     self.assertIsNone(first_bookmark_key_value)
                     self.assertIsNone(second_bookmark_key_value)
@@ -187,14 +171,10 @@ class DynamicsBookmarks(DynamicsBaseTest):
                     # Verify the number of records in the second sync is the same as the first
                     self.assertEqual(second_sync_count, first_sync_count)
 
-
                 else:
-
-
                     raise NotImplementedError(
                         "INVALID EXPECTATIONS\t\tSTREAM: {} REPLICATION_METHOD: {}".format(stream, expected_replication_method)
                     )
-
 
                 # Verify at least 1 record was replicated in the second sync
                 self.assertGreater(second_sync_count, 0, msg="We are not fully testing bookmarking for {}".format(stream))
