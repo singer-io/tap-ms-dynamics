@@ -47,7 +47,6 @@ class DynamicsBaseTest(unittest.TestCase):
         """Configuration properties required for the tap."""
         return_value = {
             "start_date": "2021-06-15T00:00:00Z",
-            "user_agent": "tap-dynamics <api_user_email@your_company.com>",
         }
         if original:
             return return_value
