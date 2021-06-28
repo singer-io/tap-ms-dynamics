@@ -102,8 +102,8 @@ class DynamicsStartDateTest(DynamicsBaseTest):
                 elif expected_replication_method == self.FULL_TABLE:
                     # Verify that the 2nd sync with an earlier start date replicates a greater or equal number of
                     # records as the 1st sync.
-                    self.assertGreaterEqual(record_count_sync_2, record_count_sync_1,
-                                        msg="The 2nd sync does not contain a greater or equal number of records than the 1st sync")
+                    self.assertEqual(record_count_sync_2, record_count_sync_1,
+                                        msg="The 2nd sync does not contain an equal number of records as in the 1st sync")
 
                     # Verify by primary key the same records are replicated in the 1st and 2nd syncs
                     self.assertTrue(primary_keys_sync_1.issubset(primary_keys_sync_2),
