@@ -73,6 +73,7 @@ class DynamicsClient:
                 start_date=None):
         self.organization_uri = organization_uri
         self.api_version = api_version if api_version else API_VERSION
+        max_pagesize = MAX_PAGESIZE if max_pagesize is None else max_pagesize # tap-tester was failing otherwise
         self.max_pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
         self.client_id = client_id
         self.client_secret = client_secret
@@ -230,7 +231,12 @@ class DynamicsClient:
         yield from entity_metadata.values()
 
     @staticmethod
-    def build_params(orderby_key: str = 'modifiedon', replication_key: str = 'modifiedon', filter_value: str = None) -> dict:
-        filter_param = f'{replication_key} ge {filter_value}'
+    def build_params(orderby_key: str = 'modifiedon',
+                    replication_key: str = 'modifiedon',
+                    filter_value: str = None) -> dict:
         orderby_param = f'{orderby_key} asc'
-        return {"$orderby": orderby_param, "$filter": filter_param}
+
+        if filter_value:
+            filter_param = f'{replication_key} ge {filter_value}'
+            return {"$orderby": orderby_param, "$filter": filter_param}
+        return {"$orderby": orderby_param}

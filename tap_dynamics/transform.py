@@ -38,3 +38,17 @@ def transform_metadata_xml(xml:str) -> dict:
             entity_def.update({entity_name: {"Key": entity_key, "Properties": props}})
 
     return entity_def
+
+def get_client_args(config):
+    return {
+        "organization_uri": config.get('organization_uri'),
+        "config_path":      config.get('config_path'),
+        "max_pagesize":     config.get('max_pagesize'),
+        "api_version":      config.get('api_version'),
+        "client_id":        config.get('client_id'),
+        "client_secret":    config.get('client_secret'),
+        "user_agent":       config.get('user_agent'),
+        "redirect_uri":     config.get('redirect_uri'),
+        "refresh_token":    config.get('refresh_token'),
+        "start_date":       config.get('start_date'),
+    }

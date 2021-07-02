@@ -2,7 +2,7 @@ import singer
 from singer import Transformer, metrics
 
 from tap_dynamics.client import DynamicsClient
-from tap_dynamics.transform import flatten_entity_attributes
+from tap_dynamics.transform import (flatten_entity_attributes, get_client_args)
 
 LOGGER = singer.get_logger()
 
@@ -31,6 +31,9 @@ EXCLUDED_ENTITIES = set([
     'systemusersyncmappingprofiles',
     'teamsyncattributemappingprofiles',
     'timestampdatemapping',
+    'lookupmapping',
+    'msdyn_casesuggestion',
+    'msdyn_knowledgearticlesuggestion'
 ])
 
 STRING_TYPES = set([
@@ -110,6 +113,7 @@ class IncrementalStream(BaseStream):
     def get_records(self, max_pagesize: int = 100, bookmark_datetime: str = None):
         endpoint = self.stream_endpoint
 
+        max_pagesize = MAX_PAGESIZE if max_pagesize is None else max_pagesize # tap-tester was failing otherwise
         pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
         header = {'Prefer': f'odata.maxpagesize={pagesize}'}
 
@@ -176,6 +180,7 @@ class FullTableStream(BaseStream):
     def get_records(self, max_pagesize: int = 100):
         endpoint = self.stream_endpoint
 
+        max_pagesize = MAX_PAGESIZE if max_pagesize is None else max_pagesize # tap-tester was failing otherwise
         pagesize = max_pagesize if max_pagesize <= MAX_PAGESIZE else MAX_PAGESIZE
         header = {'Prefer': f'odata.maxpagesize={pagesize}'}
 
@@ -228,7 +233,9 @@ def get_streams(config: dict, config_path: str) -> dict:
     STREAMS = {} # pylint: disable=invalid-name
 
     config["config_path"] = config_path
-    client = DynamicsClient(**config)
+    client_config = get_client_args(config)
+
+    client = DynamicsClient(**client_config)
 
     # dynamically build streams by iterating over entities and calling build_schema()
     for stream in client.build_entity_metadata():

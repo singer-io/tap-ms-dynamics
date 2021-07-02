@@ -6,7 +6,7 @@ with open("README.md") as f:
     readme = f.read()
 
 setup(
-    name="tap-dynamics",
+    name="tap-ms-dynamics",
     version="0.1.0",
     description="Singer.io tap for the Microsoft Dataverse Web API",
     long_description=readme,
@@ -17,7 +17,7 @@ setup(
     install_requires=open(requirements_file).readlines(),
     entry_points="""
     [console_scripts]
-    tap-dynamics=tap_dynamics:main
+    tap-ms-dynamics=tap_dynamics:main
     """,
     packages=find_packages(exclude=["tests"]),
     package_data = {
