@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="tap-ms-dynamics",
-    version="0.1.0",
+    version="0.1.1",
     description="Singer.io tap for the Microsoft Dataverse Web API",
     author="Stitch",
     url="http://singer.io",
